@@ -13,6 +13,10 @@ class Level:
 
 level_layouts = {
     0: [
-        ("")
+        ("segment", (370, 350), (370, 297), "beam", True),
+        ("segment", (215, 290), (90, 235), "beam", True),
+        ("point", (215, 290)),
+        ("point", (520, 290)),
+        ()
     ]
 }
