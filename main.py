@@ -92,12 +92,18 @@ def clear_space():
     global lines
     global moving_joint_trackers
     global sel_joint
+    global current_level
     space = pymunk.Space()
     space.gravity = (0, 50)
     points = []
     lines = []
     moving_joint_trackers = []
     sel_joint = None
+
+    current_level = levels.Level(LEVEL_ID, space, interface)
+    current_level.load(space, LEVEL_ID)
+
+clear_space()
 
 def distance(a, b):
     try:

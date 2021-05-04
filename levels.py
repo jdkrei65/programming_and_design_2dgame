@@ -1,15 +1,17 @@
 import shapes
 
-# I don't have' anything here yet, this is what I'm working on now.
-
 class Level:
     def __init__(self, id, space, ui):
         self.ID = id
         self.space = space
         self.ui = ui
 
-    def load(self):
-        pass
+    def load(self, space=self.space, id=self.ID):
+        self.space = space
+        self.ID = id
+        for obj in level_layouts[self.ID]:
+            if obj[0] == "segment":
+                seg = shapes.GenericSegment(self.space.static_body, obj[1], obj[2], 3, )
 
 level_layouts = {
     0: [
