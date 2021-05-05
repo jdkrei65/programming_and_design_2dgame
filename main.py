@@ -7,6 +7,7 @@ import shapes
 import levels
 import random
 import UI
+import copy
 
 #
 # A world where you can place lines, points, and balls to build something.
@@ -18,6 +19,9 @@ interface = UI.UserInterface()  # create a user interface instance.
 
 space = pymunk.Space()      # setup the world for pymunk
 space.gravity = (0, 50)
+
+SPACE_SAVED = pymunk.Space()    # a savestate variable
+TRACKERS_SAVED = []
 
 WIDTH = 800     # set the window size
 HEIGHT = 600
@@ -52,7 +56,6 @@ toolnames = {
     PLAYPAUSE:  "Play/Pause     (starts/pauses the simulation)",
     DELETE: "Delete         (deletes a segment or anchor)",
     RESET:  "Reset          (Deletes everything and resets the simulation)"
-
 }
 
 background = Actor('background')    # set up actors
@@ -68,13 +71,6 @@ sel_point = None    # variables to keep track of selected points/joints for line
 sel_joint = None
 
 paused = True
-
-steel_filter = pymunk.ShapeFilter(0, 0b0000001, 0b1000000)  # pymunk shapefilters
-plank_filter = pymunk.ShapeFilter(0, 0b0000010, 0b1001101)  # these manage what shapes collide with what
-beam_filter  = pymunk.ShapeFilter(0, 0b0000100, 0b1001011)
-ball_filter  = pymunk.ShapeFilter(0, 0b0001000, 0b0001110)
-joint_filter = pymunk.ShapeFilter(0, 0b0100000, 0b0000000)
-any_structure= pymunk.ShapeFilter(0, 0b1000000, 0b0000111)
 
 steel_len = 120
 plank_len = 50
@@ -93,6 +89,7 @@ def clear_space():
     global moving_joint_trackers
     global sel_joint
     global current_level
+    global paused
     space = pymunk.Space()
     space.gravity = (0, 50)
     points = []
@@ -101,7 +98,8 @@ def clear_space():
     sel_joint = None
 
     current_level = levels.Level(LEVEL_ID, space, interface)
-    current_level.load(space, LEVEL_ID)
+    current_level.load(points, LEVEL_ID, Actor)
+    paused = True
 
 clear_space()
 
@@ -123,6 +121,9 @@ def draw():
     options = pymunk.pygame_util.DrawOptions(surf)  # have pymunk do a debug draw. I need to eventually replace this with something better.
     space.debug_draw(options)
 
+    for shape in moving_joint_trackers:
+        screen.draw.filled_circle(shape.position, 7, (79, 189, 195))
+
     for line in lines:  # draw all the lines and points
         line.draw()
     for point in points:
@@ -141,6 +142,7 @@ def draw():
 def update(dt):
     if not paused:      # update the physics engine
         space.step(dt)
+
     preview_body.position = 0,0
     pointer.midleft = 32, 300-176+32*tool
 
@@ -172,7 +174,7 @@ def place_bar(pos, sfilter, linecolor=(128, 31, 31, 1), radius=3, max_length=999
             interface.scheduleEvents(f"rm_placebar_{rand}", time=2.5)
             return
         line_body = shapes.SegmentBody()    # create the segment
-        line = shapes.GenericSegment(line_body, a=sel_point, b=pos, radius=radius, shapefilter=sfilter)
+        line = shapes.GenericSegment(line_body, a=sel_point, b=pos, radius=radius, sfilter=sfilter)
         line.color = linecolor
         space.add(line_body, line)  # add it to the physics space
 
@@ -202,19 +204,19 @@ def place_steel(pos, r):                                       # the different s
     max_length = WIDTH*2
     if r:
         max_length = steel_len
-    place_bar(pos, steel_filter, (128, 31, 31, 1), 3, max_length)
+    place_bar(pos, shapes.steel_filter, (128, 31, 31, 1), 3, max_length)
 
 def place_plank(pos, r):
     max_length = WIDTH * 2
     if r:
         max_length = plank_len
-    place_bar(pos, plank_filter, (120, 92, 13, 1), 3, max_length)
+    place_bar(pos, shapes.plank_filter, (120, 92, 13, 1), 3, max_length)
 
 def place_beam(pos, r):
     max_length = WIDTH * 2
     if r:
         max_length = beam_len
-    place_bar(pos, beam_filter, (120, 120, 120, 1), 3, max_length)
+    place_bar(pos, shapes.beam_filter, (120, 120, 120, 1), 3, max_length)
 
 def place_rope(pos):    # a "slide" joint. Keeps two points at equal or less distance.
     global sel_point
@@ -257,7 +259,7 @@ def place_anchor(pos):          # place a static anchor point
     points.append(point)
 
 def find_line(pos):         # find the line at the given position
-    query = space.point_query_nearest(pos, 3, any_structure)
+    query = space.point_query_nearest(pos, 3, shapes.any_structure)
     if query:
         return query.shape
     else: return None
@@ -267,12 +269,16 @@ def place_motor(line, a):   # add a motor to a line segment
     space.add(motor)
 
 def spawn_ball(pos):        # spawn a ball at the given position
+    for shape in space.shapes:
+        if isinstance(shape, pymunk.Circle) and not shape.sensor:
+            space.remove(shape)
+
     ball_body = pymunk.Body(1, float("inf"))
-    ball_body.position = pos
+    ball_body.position = current_level.spawn_pos #pos
     ball = pymunk.Circle(ball_body, 10)
     ball_body.friction = 0.1
     ball.color = (46, 72, 135, 1)
-    ball.filter = ball_filter
+    ball.filter = shapes.ball_filter
     space.add(ball_body, ball)
 
 def delete_hovered_bodies(pos):     # delete the segment at the given point
@@ -280,7 +286,7 @@ def delete_hovered_bodies(pos):     # delete the segment at the given point
         if distance(pos, point.pos) < 7:
             points.remove(point)
 
-    query = space.point_query_nearest(pos, 3, any_structure)
+    query = space.point_query_nearest(pos, 3, shapes.any_structure)
     if query:
         shape = query.shape
         if isinstance(shape, shapes.GenericSegment):
@@ -288,13 +294,16 @@ def delete_hovered_bodies(pos):     # delete the segment at the given point
 
 
 def place_moving_joint(pos):    # place a joint on a segment
-    query = space.point_query_nearest(pos, 3, any_structure)
+    query = space.point_query_nearest(pos, 3, shapes.any_structure)
     if query:
         line = query.shape
+        if not line.can_have_joints:
+            return
+
         tracker_body = pymunk.Body(1, float("inf"))
-        tracker = pymunk.Circle(tracker_body, 9)
+        tracker = pymunk.Circle(tracker_body, 4)
         tracker.color = (79, 149, 195, 1)
-        tracker.filter = joint_filter
+        tracker.filter = shapes.joint_filter
         tracker_body.position = pos
         space.add(tracker_body, tracker)
 
@@ -310,7 +319,9 @@ def on_mouse_down(pos, button):
     global space
     global sel_joint
     global interface
-    if button == mouse.LEFT:    # do the appropriate action for the given item.
+    global SPACE_SAVED
+    global TRACKERS_SAVED
+    if button == mouse.LEFT:    # do the appropriate action for the selected item.
         if interface.mousePressedEvent(pos):
             return
 
@@ -330,6 +341,19 @@ def on_mouse_down(pos, button):
             place_rope(pos)
         elif tool == PLAYPAUSE:
             paused = not paused
+            if paused:
+                moving_joint_trackers = [] #copy.deepcopy(TRACKERS_SAVED)
+                space = None
+                space = copy.deepcopy(SPACE_SAVED)
+                for j in moving_joint_trackers:
+                    space.add(j)
+            else:
+                TRACKERS_SAVED = copy.deepcopy(moving_joint_trackers)
+                SPACE_SAVED = None
+                SPACE_SAVED = copy.deepcopy(space)
+                #for j in TRACKERS_SAVED:
+                #    SPACE_SAVED.remove(j)
+
         elif tool == DELETE:
             delete_hovered_bodies(pos)
         elif tool == MOTOR:
@@ -424,7 +448,7 @@ def on_mouse_move(pos):
         line.sensor = True
         space.add(line)
     if tool == DELETE:      # if the tool is set to delete, highlight the segment that will be deleted.
-        query = space.point_query_nearest(pos, 3, any_structure)
+        query = space.point_query_nearest(pos, 3, shapes.any_structure)
         if query:
             shape = query.shape
             if isinstance(shape, pymunk.Segment):
