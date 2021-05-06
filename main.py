@@ -82,6 +82,9 @@ space.add(preview_body)
 LEVEL_ID = 0
 current_level = levels.Level(LEVEL_ID, space, interface)
 
+TOP_TEXT = text = UI.Text(WIDTH / 2 - 128, 14, "", (0, 0, 0))
+interface.attachElement(TOP_TEXT)
+
 def clear_space():
     global space
     global points
@@ -140,8 +143,28 @@ def draw():
     screen.draw.text(toolnames[tool], (5, HEIGHT-20))
 
 def update(dt):
+    global LEVEL_ID
     if not paused:      # update the physics engine
         space.step(dt)
+
+    #TOP_TEXT.text = f"{distance(current_level.ball.body.position, current_level.goals[0].offset)}"
+
+    if not current_level.ball in space.shapes:
+        if current_level.ball in SPACE_SAVED.shapes:
+            SPACE_SAVED.remove(current_level.ball)
+        if not current_level.ball_body in space.bodies:
+            space.add(current_level.ball_body)
+        space.add(current_level.ball)
+
+    if current_level.ball:
+        if distance(current_level.ball.body.position, current_level.goals[0].offset) < 25:
+            print("level cleared!")
+            LEVEL_ID += 1
+            clear_space()
+
+        # print(current_level.goals[0].shapes_collide(current_level.ball))
+        # if len(current_level.goals[0].shapes_collide(current_level.ball).points) > 0:
+        #     print("HIT")
 
     preview_body.position = 0,0
     pointer.midleft = 32, 300-176+32*tool
@@ -154,24 +177,7 @@ def place_bar(pos, sfilter, linecolor=(128, 31, 31, 1), radius=3, max_length=999
         if sel_joint:
             sel_point = sel_joint.position  # if a joint was selected, set the selected point to the joint's position.
         if distance(sel_point, pos) > max_length:
-            ok = Actor('ok.png', center=(WIDTH / 2 + 12, 52))
-            okBtn = UI.Button(ok, 'ok.png', 'ok_h.png')
-
-            bg = UI.UIActor(Actor('uiselection.png', center=(WIDTH / 2, 50)))
-            icon = UI.Button(Actor('generic_segment.png', center=(WIDTH / 2 - 48, 52)), 'generic_segment.png', 'generic_segment.png')
-            text = UI.Text(WIDTH / 2 - 128, 14, f"Your line is too long! ({int(distance(sel_point, pos))} >= {max_length})", (0, 0, 0))
-
-            okBtn.addEvent("_removeelements", okBtn, bg, icon, text)
-
-            interface.attachElement(bg)
-            interface.attachElement(icon)
-            interface.attachElement(text)
-
-            interface.attachElement(okBtn)
-            rand = random.randint(0, 500)
-            interface.createEvent(f"rm_placebar_{rand}", lambda: print("hello")) #interface.callEvent("_removeelements", okBtn, bg, icon, text)
-
-            interface.scheduleEvents(f"rm_placebar_{rand}", time=2.5)
+            TOP_TEXT.text = f"Your line is too long! ({int(distance(sel_point, pos))} >= {max_length})"
             return
         line_body = shapes.SegmentBody()    # create the segment
         line = shapes.GenericSegment(line_body, a=sel_point, b=pos, radius=radius, sfilter=sfilter)
@@ -200,25 +206,38 @@ def place_bar(pos, sfilter, linecolor=(128, 31, 31, 1), radius=3, max_length=999
                 sel_joint = tracker
         return None
 
-def place_steel(pos, r):                                       # the different segment types
+def place_steel(pos, r):
+    if not current_level.options["allow_steel"] == True:
+        TOP_TEXT.text = "You can't place steel in this level!"
+        return
+    # the different segment types
     max_length = WIDTH*2
     if r:
         max_length = steel_len
     place_bar(pos, shapes.steel_filter, (128, 31, 31, 1), 3, max_length)
 
 def place_plank(pos, r):
+    if not current_level.options["allow_wood"] == True:
+        TOP_TEXT.text = "You can't place planks in this level!"
+        return
     max_length = WIDTH * 2
     if r:
         max_length = plank_len
     place_bar(pos, shapes.plank_filter, (120, 92, 13, 1), 3, max_length)
 
 def place_beam(pos, r):
+    if not current_level.options["allow_beam"] == True:
+        TOP_TEXT.text = "You can't place beams in this level!"
+        return
     max_length = WIDTH * 2
     if r:
         max_length = beam_len
     place_bar(pos, shapes.beam_filter, (120, 120, 120, 1), 3, max_length)
 
 def place_rope(pos):    # a "slide" joint. Keeps two points at equal or less distance.
+    if not current_level.options["allow_rope"] == True:
+        TOP_TEXT.text = "You can't place rope in this level!"
+        return
     global sel_point
     global preview_body
     global sel_joint
@@ -254,6 +273,9 @@ def place_rope(pos):    # a "slide" joint. Keeps two points at equal or less dis
                 sel_joint = tracker
 
 def place_anchor(pos):          # place a static anchor point
+    if not current_level.options["allow_static_point"] == True:
+        TOP_TEXT.text = "You can't place static points/anchors in this level!"
+        return
     point = Actor("connector")
     point.center = pos
     points.append(point)
@@ -265,6 +287,9 @@ def find_line(pos):         # find the line at the given position
     else: return None
 
 def place_motor(line, a):   # add a motor to a line segment
+    if not current_level.options["allow_motors"] == True:
+        TOP_TEXT.text = "You can't place motors in this level!"
+        return
     motor = pymunk.constraints.SimpleMotor(space.static_body, line.body, a)
     space.add(motor)
 
@@ -294,6 +319,9 @@ def delete_hovered_bodies(pos):     # delete the segment at the given point
 
 
 def place_moving_joint(pos):    # place a joint on a segment
+    if not current_level.options["allow_moving_joint"] == True:
+        TOP_TEXT.text = "You can't place joints in this level!"
+        return
     query = space.point_query_nearest(pos, 3, shapes.any_structure)
     if query:
         line = query.shape
@@ -343,11 +371,33 @@ def on_mouse_down(pos, button):
             paused = not paused
             if paused:
                 moving_joint_trackers = [] #copy.deepcopy(TRACKERS_SAVED)
+                if current_level.ball in space.shapes:
+                    space.remove(current_level.ball)
+                if current_level.ball in SPACE_SAVED.shapes:
+                    SPACE_SAVED.remove(current_level.ball)
+
+                if current_level.ball_body in space.bodies:
+                    space.remove(current_level.ball_body)
+                if current_level.ball_body in SPACE_SAVED.bodies:
+                    SPACE_SAVED.remove(current_level.ball_body)
+
                 space = None
                 space = copy.deepcopy(SPACE_SAVED)
+                current_level.ball_body.position = current_level.spawn_pos
+                current_level.ball_body.velocity = (0, 0)
                 for j in moving_joint_trackers:
                     space.add(j)
             else:
+                if current_level.ball in SPACE_SAVED.shapes:
+                    SPACE_SAVED.remove(current_level.ball)
+                if current_level.ball in space.shapes:
+                    space.remove(current_level.ball)
+
+                if current_level.ball_body in space.bodies:
+                    space.remove(current_level.ball_body)
+                if current_level.ball_body in SPACE_SAVED.bodies:
+                    SPACE_SAVED.remove(current_level.ball_body)
+
                 TRACKERS_SAVED = copy.deepcopy(moving_joint_trackers)
                 SPACE_SAVED = None
                 SPACE_SAVED = copy.deepcopy(space)

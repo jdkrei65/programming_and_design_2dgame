@@ -13,6 +13,11 @@ prepl_filter = pymunk.ShapeFilter(0, 0b0010000, 0b0001000)
 joint_filter = pymunk.ShapeFilter(0, 0b0100000, 0b0000000)
 any_structure= pymunk.ShapeFilter(0, 0b1000000, 0b0000111)
 
+#   Apparently copying subclassed stuff from pymunk breaks things.
+#   So I had to copy and modify the __get/setattr__ functions from the pymunk code.
+#   I'm not sure exactly how it works,
+#   But it does work now now.
+
 class SegmentBody(pymunk.Body):
     def __init__(self, friction=0.2):
         super().__init__(1, float("inf"))
