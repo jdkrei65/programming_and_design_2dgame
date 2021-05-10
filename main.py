@@ -93,6 +93,7 @@ def clear_space():
     global sel_joint
     global current_level
     global paused
+    TOP_TEXT.text = ""
     space = pymunk.Space()
     space.gravity = (0, 50)
     points = []
@@ -290,6 +291,9 @@ def place_motor(line, a):   # add a motor to a line segment
     if not current_level.options["allow_motors"] == True:
         TOP_TEXT.text = "You can't place motors in this level!"
         return
+    if line.is_prepl:
+        TOP_TEXT.text = "You can't motorize parts of the level!"
+        return
     motor = pymunk.constraints.SimpleMotor(space.static_body, line.body, a)
     space.add(motor)
 
@@ -298,7 +302,7 @@ def spawn_ball(pos):        # spawn a ball at the given position
         if isinstance(shape, pymunk.Circle) and not shape.sensor:
             space.remove(shape)
 
-    ball_body = pymunk.Body(1, float("inf"))
+    ball_body = pymunk.Body(2, float("inf"))
     ball_body.position = current_level.spawn_pos #pos
     ball = pymunk.Circle(ball_body, 10)
     ball_body.friction = 0.1
@@ -325,7 +329,9 @@ def place_moving_joint(pos):    # place a joint on a segment
     query = space.point_query_nearest(pos, 3, shapes.any_structure)
     if query:
         line = query.shape
+        print(line.can_have_joints)
         if not line.can_have_joints:
+            TOP_TEXT.text = "You can't place joints on this line!"
             return
 
         tracker_body = pymunk.Body(1, float("inf"))
@@ -349,6 +355,7 @@ def on_mouse_down(pos, button):
     global interface
     global SPACE_SAVED
     global TRACKERS_SAVED
+    global LEVEL_ID
     if button == mouse.LEFT:    # do the appropriate action for the selected item.
         if interface.mousePressedEvent(pos):
             return
@@ -473,13 +480,17 @@ def on_mouse_down(pos, button):
         tool += 1
         if tool > tools:
             tool = 0
+    elif button == mouse.MIDDLE:
+        LEVEL_ID += 1
+        clear_space()
 
 def on_mouse_move(pos):
     global sel_point
     global preview_body
     interface.mouseMotionEvent(pos) # send the event to the UI
     for shape in preview_body.shapes:
-        space.remove(shape)
+        if shape in space.shapes:
+            space.remove(shape)
     preview_body = pymunk.Body(pymunk.Body.STATIC, float("inf"))    # reset the preview body
     space.add(preview_body)
     if not sel_point == None:   # preview the segment you're creating, if any

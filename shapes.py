@@ -6,12 +6,12 @@ T = TypeVar("T", bound="PickleMixin")
 _State = Dict[str, List[Tuple[str, Any]]]
 
 steel_filter = pymunk.ShapeFilter(0, 0b0000001, 0b1000000)  # pymunk shapefilters
-plank_filter = pymunk.ShapeFilter(0, 0b0000010, 0b1001101)  # these manage what shapes collide with what
+plank_filter = pymunk.ShapeFilter(0, 0b0000010, 0b1011101)  # these manage what shapes collide with what
 beam_filter  = pymunk.ShapeFilter(0, 0b0000100, 0b1001011)
 ball_filter  = pymunk.ShapeFilter(0, 0b0001000, 0b0011110)
-prepl_filter = pymunk.ShapeFilter(0, 0b0010000, 0b0001000)
+prepl_filter = pymunk.ShapeFilter(0, 0b0010000, 0b1001010)
 joint_filter = pymunk.ShapeFilter(0, 0b0100000, 0b0000000)
-any_structure= pymunk.ShapeFilter(0, 0b1000000, 0b0000111)
+any_structure= pymunk.ShapeFilter(0, 0b1000000, 0b0010111)
 
 #   Apparently copying subclassed stuff from pymunk breaks things.
 #   So I had to copy and modify the __get/setattr__ functions from the pymunk code.
@@ -64,6 +64,7 @@ class GenericSegment(pymunk.Segment):
         self.elasticity = 0.0
         self.filter = sfilter
         self.can_have_joints = True
+        self.is_prepl = False
 
     def anchorTo(self, body, point):
         joint = pymunk.constraints.PinJoint(body, self.body, (0, 0), self.body.world_to_local(point))
